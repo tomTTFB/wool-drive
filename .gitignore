@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Test files
+*.png
+*.jpg
+*.jpeg
+*.zip
