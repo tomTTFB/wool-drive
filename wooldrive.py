@@ -16,8 +16,10 @@ colours = [
 
 version = ("java", (1, 20, 4))
 dimension = "minecraft:overworld"
-width = 64
+width = 128
+height = 128
 base_y = -60
+wall_gap = 3
 
 def pack(name: str, data: bytes) -> bytes:
     name_bytes = name.encode("utf-8")
@@ -64,13 +66,27 @@ def write_wall(world_path: str, wall: list[str]) -> None:
 
     level = amulet.load_level(world_path)
     for i, name in enumerate(wall):
-        x = i % width
-        y = base_y + i // width
-        level.set_version_block(x, y, 0, dimension, version, blocks[name])
+        x, y, z = position(i)
+        level.set_version_block(x, y, z, dimension, version, blocks[name])
     level.save()
     level.close()
 
-world = "/home/tom/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/instances/26.1/minecraft/saves/Wool Drive"
-blob = pack("test.txt", b"hello luke")
-write_wall(world, to_colours(to_nibbles(blob)))
-print("Done")
+def store(file_path: str, world_path: str) -> None:
+    path = Path(file_path)
+    blob = pack(path.name, path.read_bytes())
+    wall = to_colours(to_nibbles(blob))
+
+    write_wall(world_path, wall)
+    print("Done")
+
+def position(i:int) -> tuple[int, int, int]:
+    per_wall = width * height
+    wall = i // per_wall
+    spot = i % per_wall
+    x = spot % width
+    y = base_y + spot // width
+    z = wall * wall_gap
+    return x, y, z
+
+if __name__ == "__main__":
+    store(sys.argv[1], sys.argv[2])
