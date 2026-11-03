@@ -53,6 +53,28 @@ def from_nibbles(nibbles: list[int]) -> bytes:
         output.append((nibbles[i] << 4) | nibbles[i + 1])
     return bytes(output)
 
+def read_blocks(level, start: int, count:int) -> list[str]:
+    names = []
+    for i in range(start, start + count):
+        x, y, z = position(i)
+        block, _ = level.get_version_block(x, y, z, dimension, version)
+        names.append(block.base_name.removesuffix("_wool"))
+    return names
+
+def verify_wall(world_path: str, wall: list[str]) -> None:
+    level = amulet.load_level(world_path)
+    found = read_blocks(level, 0, len(wall))
+    level.close()
+
+    bad = [i for i in range(len(wall)) if found[i] != wall[i]]
+    if bad is True:
+        first = bad[0]
+        raise RuntimeError(
+            f"verify failed: {len(bad)} of {len(wall)} blocks wrong, "
+            f"first at block {first} {position(first)}: "
+            f"expected {wall[first]}, found {found[first]}"
+        )
+
 colour_index = {name: i for i, name in enumerate(colours)}
 
 def to_colours(nibbles: list[int]) -> list[str]:
@@ -77,6 +99,7 @@ def store(file_path: str, world_path: str) -> None:
     wall = to_colours(to_nibbles(blob))
 
     write_wall(world_path, wall)
+    verify_wall(world_path, wall)
     print("Done")
 
 def position(i:int) -> tuple[int, int, int]:
