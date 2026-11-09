@@ -104,6 +104,17 @@ def find_free_wall(level) -> int:
         name, data_len, walls_used = header
         wall += walls_used
 
+def list_files(level) -> list[tuple[str, int, int]]:
+    files = []
+    wall = 0
+    while True:
+        header = read_header(level, wall)
+        if header is None:
+            return files
+        name, data_len, walls_used = header
+        files.append((name, data_len, wall))
+        wall += walls_used
+
 colour_index = {name: i for i, name in enumerate(colours)}
 
 def to_colours(nibbles: list[int]) -> list[str]:
@@ -145,4 +156,17 @@ def position(i:int) -> tuple[int, int, int]:
     return x, y, z
 
 if __name__ == "__main__":
-    store(sys.argv[1], sys.argv[2])
+    command = sys.argv[1]
+
+    if command == "store":
+        store(sys.argv[2], sys.argv[3])
+    elif command == "list":
+        level = amulet.load_level(sys.argv[2])
+        files = list_files(level)
+        level.close()
+        if not files:
+            print("No files stored")
+        for name, size, wall in files:
+            print(f"wall {wall:>3}  {size:>8} bytes  {name}")
+    else:
+        print("usage: wooldrive.py store <file> <world> | list <world>")
