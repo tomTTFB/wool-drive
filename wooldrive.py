@@ -2,7 +2,11 @@ import struct
 import sys
 from pathlib import Path
 import amulet
+import json
+
 from amulet.api.block import Block
+from amulet.api.block_entity import BlockEntity
+from amulet_nbt import CompoundTag, ListTag, StringTag, ByteTag, NamedTag
 
 # Wool SToRage
 signature = b"WSTR"
@@ -134,6 +138,32 @@ def write_wall(world_path: str, wall: list[str], start_wall: int) -> None:
     level.save()
     level.close()
 
+def sign_side(lines: list[str]) -> CompoundTag:
+    return CompoundTag({
+        "messages": ListTag([StringTag(json.dumps({"text": l})) for l in lines]),
+        "color": StringTag("black"),
+        "has_glowing_text": ByteTag(0),
+    })
+
+def place_signs(world_path: str, name: str, size: int, start_wall: int, walls_used: int) -> None:
+    short = name if len(name) <= 15 else name[:14] + "~"
+    sign = Block("minecraft", "oak_sign", {"rotation": StringTag("4")})
+
+    level = amulet.load_level(world_path)
+    for part in range(walls_used):
+        wall = start_wall + part
+        x, y, z = -1, base_y, wall * wall_gap
+        lines = ["Wool Drive", short, f"{size} bytes", f"part {part + 1}/{walls_used}"]
+        nbt = NamedTag(CompoundTag({
+            "front_text": sign_side(lines),
+            "back_text": sign_side(["", "", "", ""]),
+            "is_waxed": ByteTag(1),
+        }))
+        entity = BlockEntity("minecraft", "sign", x, y, z, nbt)
+        level.set_version_block(x, y, z, dimension, version, sign, entity)
+    level.save()
+    level.close()
+
 def store(file_path: str, world_path: str) -> None:
     path = Path(file_path)
     blob = pack(path.name, path.read_bytes())
@@ -145,6 +175,8 @@ def store(file_path: str, world_path: str) -> None:
 
     write_wall(world_path, wall, start_wall)
     verify_wall(world_path, wall, start_wall)
+    walls_used = (len(wall) + per_wall - 1) // per_wall
+    place_signs(world_path, path.name, len(blob) - 9 - len(path.name.encode("utf-8")), start_wall, walls_used)
     print("Done")
 
 def position(i:int) -> tuple[int, int, int]:
