@@ -3,6 +3,7 @@ venv/
 __pycache__/
 *.pyc
 recovered/
+defaultworldpath.txt
 
 # Test files
 *.png

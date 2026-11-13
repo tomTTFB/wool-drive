@@ -15,12 +15,20 @@ root = tk.Tk()
 root.title("Wool Drive")
 root.geometry("500x400")
 
+try:
+    with open("defaultworldpath.txt") as f:
+        world_path = f.read()
+except FileNotFoundError:
+    print("INFO: defaultworldpath.txt file does not exist, it will be created when choosing a world")
+
 def choose_world():
     global world_path
     folder = filedialog.askdirectory(title="Choose a Minecraft world folder")
     if folder:
         world_path = folder
         world_path_label.config(text=Path(folder).name)
+        with open("defaultworldpath.txt", "w") as f:
+            f.write(folder)
         refresh_files()
 
 def refresh_files():
@@ -75,5 +83,9 @@ store_button.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
 root.columnconfigure(0, weight=1)
 root.rowconfigure(2, weight=1)
+
+if world_path and Path(world_path).exists():
+    world_path_label.config(text=Path(world_path).name)
+    refresh_files()
 
 root.mainloop()
