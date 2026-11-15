@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            output: WoolDrive.exe
+            asset: WoolDrive-windows.exe
+          - os: ubuntu-latest
+            output: WoolDrive
+            asset: WoolDrive-linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install amulet-core pillow pyinstaller
+
+      - name: Build
+        run: >
+          pyinstaller --onefile --windowed --name WoolDrive
+          --collect-all amulet
+          --collect-all PyMCTranslate
+          --collect-all amulet_nbt
+          gui.py
+
+      - name: Rename
+        shell: bash
+        run: mv "dist/${{ matrix.output }}" "dist/${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.asset }}
