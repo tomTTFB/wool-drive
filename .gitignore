@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 recovered/
 defaultworldpath.txt
+!images/*.png
 
 # Test files
 *.png

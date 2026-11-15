@@ -11,6 +11,21 @@ from wooldrive import list_files, store
 
 import threading
 
+from PIL import Image, ImageTk
+from wooldrive import list_files, store, pack, to_nibbles, to_colours, width, height, per_wall
+
+wool_rgb = {
+    "white": (233, 236, 236), "orange": (240, 118, 19),
+    "magenta": (189, 68, 179), "light_blue": (58, 175, 217),
+    "yellow": (248, 197, 39), "lime": (112, 185, 25),
+    "pink": (237, 141, 172), "gray": (62, 68, 71),
+    "light_gray": (142, 142, 134), "cyan": (21, 137, 145),
+    "purple": (121, 42, 172), "blue": (53, 57, 157),
+    "brown": (114, 71, 40), "green": (84, 109, 27),
+    "red": (160, 39, 34), "black": (20, 21, 25),
+}
+empty_rgb = (90, 125, 60)
+
 world_path = None
 files = []
 
@@ -89,7 +104,7 @@ def recover_thread(name, save_path):
         _, data = read_wall(world_path, name)
         Path(save_path).write_bytes(data)
         digest = hashlib.sha256(data).hexdigest()
-        root.after(0, recover_done, e, None, f"Recovered {name}\n\nSHA-256:\n{digest}")
+        root.after(0, recover_done, None, f"Recovered {name}\n\nSHA-256:\n{digest}")
     except Exception as e:
         root.after(0, recover_done, e, None)
 
@@ -100,6 +115,32 @@ def recover_done(error, message):
     else:
         messagebox.showinfo("Wool Drive", message)
     count_label.config(text=f"{len(files)} file(s) stored")
+
+def preview_file():
+    file_path = filedialog.askopenfilename(title="Choose a file to preview")
+    if not file_path:
+        return
+
+    path = Path(file_path)
+    wall = to_colours(to_nibbles(pack(path.name, path.read_bytes())))
+    walls_used = (len(wall) + per_wall - 1) // per_wall
+
+    first = wall[:per_wall]
+    pixels = [wool_rgb[c] for c in first] + [empty_rgb] * (per_wall - len(first))
+
+    img = Image.new("RGB", (width, height))
+    img.putdata(pixels)
+    img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    img = img.resize((width * 3, height * 3), Image.NEAREST)
+
+    win = tk.Toplevel(root)
+    win.title(f"Preview: {path.name}")
+    photo = ImageTk.PhotoImage(img)
+    label = tk.Label(win, image=photo)
+    label.image = photo
+    label.grid(row=0, column=0)
+    wall_label = tk.Label(win, text=f"Wall 1 of {walls_used}   ({len(wall)} bytes")
+    wall_label.grid(row=1, column=0, pady=5)
 
 
 choose_world_button = tk.Button(root, text="Choose world", command=choose_world)
@@ -119,6 +160,9 @@ store_button.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
 recover_button = tk.Button(root, text="Recover file", command=recover_files)
 recover_button.grid(row=3, column=0, columnspan=2, pady=5)
+
+preview_button = tk.Button(root, text="Preview file", command=preview_file)
+preview_button.grid(row=1, column=0, padx=5, pady=5, sticky="e")
 
 root.columnconfigure(0, weight=1)
 root.rowconfigure(2, weight=1)
