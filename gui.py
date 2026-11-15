@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import hashlib
+from decoder import read_wall
 
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from wooldrive import list_files, store
 import threading
 
 world_path = None
+files = []
 
 root = tk.Tk()
 root.title("Wool Drive")
@@ -32,6 +35,7 @@ def choose_world():
         refresh_files()
 
 def refresh_files():
+    global files
     file_list.delete(0, tk.END)
     level = amulet.load_level(world_path)
     files = list_files(level)
@@ -65,6 +69,38 @@ def store_done(error):
         messagebox.showerror("Wool Drive", str(error))
     refresh_files()
 
+def recover_files():
+    selected = file_list.curselection()
+    if not selected:
+        messagebox.showerror("Wool Drive", "ERROR: Select a file in the list first")
+        return
+    name = files[selected[0]][0]
+
+    save_path = filedialog.asksaveasfilename(title="Save recovered file as")
+    if not save_path:
+        return
+
+    recover_button.config(state="disabled")
+    count_label.config(text=f"Recovering {name}...")
+    threading.Thread(target=recover_thread, args=(name, save_path), daemon=True).start()
+
+def recover_thread(name, save_path):
+    try:
+        _, data = read_wall(world_path, name)
+        Path(save_path).write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        root.after(0, recover_done, e, None, f"Recovered {name}\n\nSHA-256:\n{digest}")
+    except Exception as e:
+        root.after(0, recover_done, e, None)
+
+def recover_done(error, message):
+    recover_button.config(state="normal")
+    if error:
+        messagebox.showerror("Wool Drive", str(error))
+    else:
+        messagebox.showinfo("Wool Drive", message)
+    count_label.config(text=f"{len(files)} file(s) stored")
+
 
 choose_world_button = tk.Button(root, text="Choose world", command=choose_world)
 choose_world_button.grid(row=0, column=0, pady=5)
@@ -80,6 +116,9 @@ file_list.grid(row=2, column=0, columnspan=2, sticky="nsew")
 
 store_button = tk.Button(root, text="Store file", command=store_file)
 store_button.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+recover_button = tk.Button(root, text="Recover file", command=recover_files)
+recover_button.grid(row=3, column=0, columnspan=2, pady=5)
 
 root.columnconfigure(0, weight=1)
 root.rowconfigure(2, weight=1)
