@@ -58,8 +58,8 @@ The colour for each nibble:
 
 ### Installing
 
-* Download the latest build and `wool-drive-demo-world.zip` from the [Releases](../../releases) page
-* Unzip the demo world anywhere. It already has four files stored in it: two text files, a PNG and a zip
+* Download the latest build and `WDDemo.zip` from the [Releases](../../releases) page
+* Unzip the demo world anywhere. It already has four files stored in it including two text files, a PNG and a zip
 
 To run from source instead:
 
