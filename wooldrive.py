@@ -312,7 +312,7 @@ if __name__ == "__main__":
         level.close()
         if not files:
             print("No files stored")
-        for name, size, wall in files:
+        for name, size, wall, _ in files:
             print(f"wall {wall:>3}  {size:>8} bytes  {name}")
     else:
         print("usage: wooldrive.py store <file> <world> | list <world>")

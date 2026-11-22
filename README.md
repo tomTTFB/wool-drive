@@ -80,7 +80,7 @@ git clone https://github.com/tomTTFB/wool-drive.git
 cd wool-drive
 python3 -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
-pip install amulet-core pillow
+pip install amulet-core pillow reedsolo
 ```
 
 ### Executing program
