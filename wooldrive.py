@@ -262,16 +262,19 @@ def store(file_path: str, world_path: str, compress: bool = True, protect: bool 
     path = Path(file_path)
     data = path.read_bytes()
     blob = pack(path.name, data, compress, protect)
+    wall = to_colours(to_nibbles(blob))
 
     level = amulet.load_level(world_path)
+    if any(f[0] == path.name for f in list_files(level)):
+        level.close()
+        raise ValueError(f"{path.name} is already stored in this world")
     start_wall = find_free_wall(level)
     level.close()
 
     write_wall(world_path, wall, start_wall)
     verify_wall(world_path, wall, start_wall)
     walls_used = (len(wall) + per_wall - 1) // per_wall
-    place_signs(world_path, path.name, len(blob) - 9 - len(path.name.encode("utf-8")), start_wall, walls_used)
-    print("Done")
+    place_signs(world_path, path.name, len(data), start_wall, walls_used)
 
 def position(i:int) -> tuple[int, int, int]:
     wall = i // per_wall

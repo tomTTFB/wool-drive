@@ -42,6 +42,18 @@ The colour for each nibble:
 | sigma.png | 194,620 bytes | `1edb68848a32616854c70f86aa9a9cccf4b8dff1020ffa2b2b245a2be700cd59` |
 | test.zip | 194,145 bytes | `979fdd002704eeae11084101db510c42586fc13f69c8e369a08f43b87b433442` |
 
+## Error Correction (New in v1.1)
+
+With Error Correction ticked, Wool Drive will add Reed-Solomon codes (using reedsolo python library), so a file can survive  blocks being destroyed.
+
+**Reed-Solomon:** the file is cut into 223-byte pieces, and each one gets 32 extra "parity" bytes, making a 255-byte codeword. The parity can rebuild damaged bytes.
+
+**Interleaving:** a TNT hole is a cluster of neighbouring blocks which can wipe out one codeword. So the codewords are shuffled together, byte 0 of every codeword, then byte 1 of every codeword and so on. A hole then only takes a byte or two from each codeword.
+
+**Protected header:** the header and the filename also get their own parity bytes, so Wool Drive can still find and name a file even if the start of the wall gets blown up.
+
+It costs about 14% more blocks (255 for every 223) and also works best on files over about 20 KB because bigger files spread each codeword further across the wall so one hole takes fewer bytes from each.
+
 ### Screenshots
 
 ![Wool walls with signs](images/walls.png)

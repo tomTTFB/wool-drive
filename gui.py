@@ -29,7 +29,7 @@ files = []
 
 root = tk.Tk()
 root.title("Wool Drive")
-root.geometry("500x400")
+root.geometry("570x450")
 
 try:
     with open("defaultworldpath.txt") as f:
@@ -71,7 +71,7 @@ def store_file():
     protect = protect_var.get()
     threading.Thread(target=store_thread, args=(file_path, compress, protect), daemon=True).start()
 
-def store_thread(file_path, compress):
+def store_thread(file_path, compress, protect):
     try:
         store(file_path, world_path, compress, protect)
         root.after(0, store_done, None)
