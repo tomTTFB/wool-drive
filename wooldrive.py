@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import amulet
 import json
+import zlib
 
 from amulet.api.block import Block
 from amulet.api.block_entity import BlockEntity
@@ -10,6 +11,9 @@ from amulet_nbt import CompoundTag, ListTag, StringTag, ByteTag, NamedTag
 
 # Wool SToRage
 signature = b"WSTR"
+
+# Wool STorage 2
+signature_v2 = b"WST2"
 
 colours = [
     "white", "orange", "magenta", "light_blue",
@@ -26,21 +30,41 @@ base_y = -60
 wall_gap = 3
 per_wall = width * height
 
-def pack(name: str, data: bytes) -> bytes:
+compressed = 1
+
+def pack(name: str, data: bytes, compress: bool = True) -> bytes:
     name_bytes = name.encode("utf-8")
-    lengths = struct.pack(">BI", len(name_bytes), len(data))
-    return signature + lengths + name_bytes + data
+    flags = 0
+    stored = data
+    if compress:
+        squashed = zlib.compress(data, 9)
+        if len(squashed) < len(data):
+            stored = squashed
+            flags |= compressed
+    header = signature_v2 + struct.pack(">BBII", flags, len(name_bytes), len(data), len(stored))
+    return header + name_bytes + stored
+
+def parse_header(head: bytes):
+    if head[:4] == signature_v2:
+        flags, name_len, original, stored = struct.unpack(">BBII", head[4:14])
+        return 14, flags, name_len, original, stored
+    if head[:4] == signature:
+        name_len, size = struct.unpack(">BI", head[4:9])
+        return 9, 0, name_len, size, size
+    return None
 
 def unpack(blob: bytes) -> tuple[str, bytes]:
-    if blob[:4] != signature:
+    info = parse_header(blob[:14])
+    if info is None:
         raise ValueError("ERROR: file not a Wool Drive file")
+    header_len, flags, name_len, original, stored = info
 
-    name_len, data_len = struct.unpack(">BI", blob[4:9])
-    name_start = 9
-    data_start = name_start + name_len
-
-    name = blob[name_start:data_start].decode("utf-8")
-    data = blob[data_start:data_start + data_len]
+    name = blob[header_len:header_len + name_len].decode("utf-8")
+    data = blob[header_len + name_len:header_len + name_len + stored]
+    if flags & compressed:
+        data = zlib.decompress(data)
+    if len(data) != original:
+        raise ValueError("ERROR: recovered size doesn't match the header")
     return name, data
 
 def to_nibbles(data: bytes) -> list[int]:
@@ -68,21 +92,27 @@ def read_blocks(level, start: int, count:int) -> list[str]:
 
 def read_header(level, wall: int):
     start = wall * per_wall
-    names = read_blocks(level, start, 18)
+    names = read_blocks(level, start, 8)
     if any(n not in colour_index for n in names):
         return None
 
     head = from_nibbles(from_colours(names))
-    if head[:4] != signature:
+    if head == signature_v2:
+        header_len = 14
+    elif head == signature:
+        header_len = 9
+    else:
         return None
-    name_len, data_len = struct.unpack(">BI", head[4:9])
 
-    name_names = read_blocks(level, start + 18, name_len * 2)
+    names += read_blocks(level, start + 8, header_len * 2 - 8)
+    header_len, flags, name_len, original, stored = parse_header(from_nibbles(from_colours(names)))
+
+    name_names = read_blocks(level, start + header_len * 2, name_len * 2)
     name = from_nibbles(from_colours(name_names)).decode("utf-8")
 
-    total_blocks = (9 + name_len + data_len) * 2
-    walls_used = (total_blocks + per_wall - 1) // per_wall
-    return name, data_len, walls_used
+    total_bytes = header_len + name_len + stored
+    walls_used = (total_bytes * 2 + per_wall - 1) // per_wall
+    return name, original, walls_used, total_bytes
 
 def verify_wall(world_path: str, wall: list[str], start_wall: int) -> None:
     offset = start_wall * per_wall
@@ -105,18 +135,18 @@ def find_free_wall(level) -> int:
         header = read_header(level, wall)
         if header is None:
             return wall
-        name, data_len, walls_used = header
+        name, data_len, walls_used, total = header
         wall += walls_used
 
-def list_files(level) -> list[tuple[str, int, int]]:
+def list_files(level) -> list[tuple[str, int, int, int]]:
     files = []
     wall = 0
     while True:
         header = read_header(level, wall)
         if header is None:
             return files
-        name, data_len, walls_used = header
-        files.append((name, data_len, wall))
+        name, data_len, walls_used, total = header
+        files.append((name, data_len, wall, total))
         wall += walls_used
 
 colour_index = {name: i for i, name in enumerate(colours)}
@@ -164,7 +194,7 @@ def place_signs(world_path: str, name: str, size: int, start_wall: int, walls_us
     level.save()
     level.close()
 
-def store(file_path: str, world_path: str) -> None:
+def store(file_path: str, world_path: str, compress: bool = True) -> None:
     path = Path(file_path)
     blob = pack(path.name, path.read_bytes())
     wall = to_colours(to_nibbles(blob))

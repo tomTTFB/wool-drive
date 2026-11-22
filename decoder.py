@@ -8,9 +8,8 @@ from wooldrive import per_wall, read_blocks, list_files, from_colours, from_nibb
 
 def read_wall(world_path: str, wanted: str) -> tuple[str, bytes]:
     level = amulet.load_level(world_path)
-    for name,size,wall, in list_files(level):
+    for name, size, wall, total_bytes in list_files(level):
         if name == wanted:
-            total_bytes = 9 + len(name.encode("utf-8")) + size
             names = read_blocks(level, wall * per_wall, total_bytes * 2)
             level.close()
             return unpack(from_nibbles(from_colours(names)))
