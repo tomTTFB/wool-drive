@@ -68,11 +68,12 @@ def store_file():
     store_button.config(state="disabled")
     count_label.config(text=f"Storing {Path(file_path).name}...")
     compress = compress_var.get()
-    threading.Thread(target=store_thread, args=(file_path, compress), daemon=True).start()
+    protect = protect_var.get()
+    threading.Thread(target=store_thread, args=(file_path, compress, protect), daemon=True).start()
 
 def store_thread(file_path, compress):
     try:
-        store(file_path, world_path, compress)
+        store(file_path, world_path, compress, protect)
         root.after(0, store_done, None)
     except Exception as e:
         root.after(0, store_done, e)
@@ -121,7 +122,7 @@ def preview_file():
         return
 
     path = Path(file_path)
-    wall = to_colours(to_nibbles(pack(path.name, path.read_bytes(), compress_var.get())))
+    wall = to_colours(to_nibbles(pack(path.name, path.read_bytes(), compress_var.get(), protect_var.get())))
     walls_used = (len(wall) + per_wall - 1) // per_wall
 
     first = wall[:per_wall]
@@ -166,6 +167,10 @@ preview_button.grid(row=1, column=0, padx=5, pady=5, sticky="e")
 compress_var = tk.BooleanVar(value=True)
 compress_check = tk.Checkbutton(root, text="Compress (only if it makes the file smaller)", variable=compress_var)
 compress_check.grid(row=4, column=0, columnspan=2, pady=5)
+
+protect_var = tk.BooleanVar(value=False)
+protect_check = tk.Checkbutton(root, text="", variable=protect_var)
+protect_check.grid(row=5, column=0, columnspan=2, pady=5)
 
 root.columnconfigure(0, weight=1)
 root.rowconfigure(2, weight=1)

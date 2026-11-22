@@ -4,7 +4,7 @@ import struct
 import sys
 from pathlib import Path
 
-from wooldrive import per_wall, read_blocks, list_files, from_colours, from_nibbles, unpack
+from wooldrive import *
 
 def read_wall(world_path: str, wanted: str) -> tuple[str, bytes]:
     level = amulet.load_level(world_path)
@@ -12,9 +12,10 @@ def read_wall(world_path: str, wanted: str) -> tuple[str, bytes]:
         if name == wanted:
             names = read_blocks(level, wall * per_wall, total_bytes * 2)
             level.close()
-            return unpack(from_nibbles(from_colours(names)))
+            blob, erased = block_to_bytes(names)
+            return unpack(blob, erased)
     level.close()
-    raise FileNotFoundError(f"{wanted} is not stored in this world")
+    raise FileNotFoundError(f"ERROR: {wanted} is not stored in this world")
 
 def recover(world_path: str, wanted: str, out_dir: str = "recovered") -> None:
     name, data = read_wall(world_path, wanted)

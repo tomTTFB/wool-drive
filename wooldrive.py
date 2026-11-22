@@ -4,6 +4,7 @@ from pathlib import Path
 import amulet
 import json
 import zlib
+from reedsolo import RSCodec, ReedSolomonError
 
 from amulet.api.block import Block
 from amulet.api.block_entity import BlockEntity
@@ -32,7 +33,12 @@ per_wall = width * height
 
 compressed = 1
 
-def pack(name: str, data: bytes, compress: bool = True) -> bytes:
+rs = 2
+rs_parity = 32
+rs_data = 255 - rs_parity
+rsc = RSCodec(rs_parity)
+
+def pack(name: str, data: bytes, compress: bool = True, protect: bool = True) -> bytes:
     name_bytes = name.encode("utf-8")
     flags = 0
     stored = data
@@ -41,8 +47,16 @@ def pack(name: str, data: bytes, compress: bool = True) -> bytes:
         if len(squashed) < len(data):
             stored = squashed
             flags |= compressed
+    if protect:
+        flags |= rs
     header = signature_v2 + struct.pack(">BBII", flags, len(name_bytes), len(data), len(stored))
-    return header + name_bytes + stored
+
+    if not protect:
+        return header + name_bytes + stored
+
+    if len(name_bytes) > rs_data:
+        raise ValueError("ERROR: file name is too long for error correction (max is 223 bytes)")
+    return bytes(rsc.encode(header)) + bytes(rsc.encode(name_bytes)) + interleave(rs_encode(stored))
 
 def parse_header(head: bytes):
     if head[:4] == signature_v2:
@@ -53,18 +67,50 @@ def parse_header(head: bytes):
         return 9, 0, name_len, size, size
     return None
 
-def unpack(blob: bytes) -> tuple[str, bytes]:
-    info = parse_header(blob[:14])
+def decode_header(blob: bytes, erased: set[int]):
+    if not any(p < 14 for p in erased):
+        info = parse_header(blob[:14])
+        if info and not info[1] & rs:
+            return info, info[0]
+        if info:
+            return info, 46
+
+    head_erase = [p for p in range(46) if p in erased]
+    try:
+        fixed, _, _ = rsc.decode(blob[:46], erase_pos=head_erase if head_erase else None)
+    except ReedSolomonError:
+        return None, 0
+    info = parse_header(bytes(fixed))
+    if info and info[1] & rs:
+        return info, 46
+    return None, 0
+
+def unpack(blob: bytes, erased: set[int] = frozenset()) -> tuple[str, bytes]:
+    info, start = decode_header(blob, erased)
     if info is None:
-        raise ValueError("ERROR: file not a Wool Drive file")
+        raise ValueError("ERROR: not a Wool Drive file, or the header is too damaged")
     header_len, flags, name_len, original, stored = info
 
-    name = blob[header_len:header_len + name_len].decode("utf-8")
-    data = blob[header_len + name_len:header_len + name_len + stored]
+    if flags & rs:
+        name_end = start + name_len + rs_parity
+        name_erase = [p - start for p in erased if start <= p < name_end]
+        name_fixed, _, _ = rsc.decode(blob[start:name_end], erase_pos=name_erase if name_erase else None)
+        name = bytes(name_fixed).decode("utf-8")
+
+        codeword_count = -(-stored // rs_data)
+        data_end = name_end + codeword_count * 255
+        data_erased = {p - name_end for p in erased if name_end <= p < data_end}
+        data = rs_decode(blob[name_end:data_end], data_erased, stored)
+    else:
+        if erased:
+            raise ValueError("this file is damaged and wasn't stored TNT-proof")
+        name = blob[start:start + name_len].decode("utf-8")
+        data = blob[start + name_len:start + name_len + stored]
+
     if flags & compressed:
         data = zlib.decompress(data)
     if len(data) != original:
-        raise ValueError("ERROR: recovered size doesn't match the header")
+        raise ValueError("recovered size doesn't match the header")
     return name, data
 
 def to_nibbles(data: bytes) -> list[int]:
@@ -90,27 +136,45 @@ def read_blocks(level, start: int, count:int) -> list[str]:
         names.append(block.base_name.removesuffix("_wool"))
     return names
 
+def block_to_bytes(names: list[str]) -> tuple[bytes, set[int]]:
+    out = bytearray()
+    erased = set()
+    for p in range(0, len(names), 2):
+        high, low = names[p], names[p + 1]
+        if high in colour_index and low in colour_index:
+            out.append((colour_index[high] << 4) | colour_index[low])
+        else:
+            out.append(0)
+            erased.add(p // 2)
+    return bytes(out), erased
+
 def read_header(level, wall: int):
     start = wall * per_wall
-    names = read_blocks(level, start, 8)
-    if any(n not in colour_index for n in names):
+    head_blocks = read_blocks(level, start, 92)
+    if all(n == "air" for n in head_blocks):
         return None
 
-    head = from_nibbles(from_colours(names))
-    if head == signature_v2:
-        header_len = 14
-    elif head == signature:
-        header_len = 9
+    head, erased = block_to_bytes(head_blocks)
+    info, body_start = decode_header(head, erased)
+    if info is None:
+        raise ValueError(f"ERROR: wall {wall} has blocks on it but no readable Wool Drive header")
+    header_len, flags, name_len, original, stored = info
+
+    protected = flags & rs
+    name_size = name_len + rs_parity if protected else name_len
+    name_blocks = read_blocks(level, start + body_start * 2, name_size * 2)
+    name_raw, name_erased = block_to_bytes(name_blocks)
+
+    if protected:
+        fixed, _, _ = rsc.decode(name_raw, erase_pos=sorted(name_erased) if name_erased else None)
+        name = bytes(fixed).decode("utf-8")
+        total_bytes = body_start + name_size + -(-stored // rs_data) * 255
     else:
-        return None
+        if name_erased:
+            raise ValueError(f"ERROR: the file name on wall {wall} is damaged")
+        name = name_raw.decode("utf-8")
+        total_bytes = body_start + name_size + stored
 
-    names += read_blocks(level, start + 8, header_len * 2 - 8)
-    header_len, flags, name_len, original, stored = parse_header(from_nibbles(from_colours(names)))
-
-    name_names = read_blocks(level, start + header_len * 2, name_len * 2)
-    name = from_nibbles(from_colours(name_names)).decode("utf-8")
-
-    total_bytes = header_len + name_len + stored
     walls_used = (total_bytes * 2 + per_wall - 1) // per_wall
     return name, original, walls_used, total_bytes
 
@@ -194,10 +258,10 @@ def place_signs(world_path: str, name: str, size: int, start_wall: int, walls_us
     level.save()
     level.close()
 
-def store(file_path: str, world_path: str, compress: bool = True) -> None:
+def store(file_path: str, world_path: str, compress: bool = True, protect: bool = False) -> None:
     path = Path(file_path)
-    blob = pack(path.name, path.read_bytes())
-    wall = to_colours(to_nibbles(blob))
+    data = path.read_bytes()
+    blob = pack(path.name, data, compress, protect)
 
     level = amulet.load_level(world_path)
     start_wall = find_free_wall(level)
@@ -216,6 +280,23 @@ def position(i:int) -> tuple[int, int, int]:
     y = base_y + spot // width
     z = wall * wall_gap
     return x, y, z
+
+def rs_encode(payload: bytes) -> list[bytes]:
+    padded = payload + bytes(-len(payload) % rs_data)
+    return [bytes(rsc.encode(padded[i:i + rs_data])) for i in range(0, len(padded), rs_data)]
+
+def interleave(codewords: list[bytes]) -> bytes:
+    return bytes(cw[byte_index] for byte_index in range(255) for cw in codewords)
+
+def rs_decode(stream: bytes, erased: set[int], payload_len: int) -> bytes:
+    codeword_count = len(stream) // 255
+    out = bytearray()
+    for i in range(codeword_count):
+        cw = bytes(stream[j * codeword_count + i] for j in range(255))
+        erase = [byte_index for byte_index in range(255) if byte_index * codeword_count + i in erased]
+        fixed, _, _ = rsc.decode(cw, erase_pos=erase if erase else None)
+        out += fixed
+    return bytes(out[:payload_len])
 
 if __name__ == "__main__":
     command = sys.argv[1]
