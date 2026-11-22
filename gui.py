@@ -169,7 +169,7 @@ compress_check = tk.Checkbutton(root, text="Compress (only if it makes the file 
 compress_check.grid(row=4, column=0, columnspan=2, pady=5)
 
 protect_var = tk.BooleanVar(value=False)
-protect_check = tk.Checkbutton(root, text="", variable=protect_var)
+protect_check = tk.Checkbutton(root, text="Error Correction (14% Bigger)", variable=protect_var)
 protect_check.grid(row=5, column=0, columnspan=2, pady=5)
 
 root.columnconfigure(0, weight=1)
